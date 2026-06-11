@@ -46,6 +46,7 @@ $script:ClaudeForceRefresh = $false
 $script:ClaudeOfficialCache = $null
 $script:ClaudeNextFetch = [DateTime]::MinValue
 $script:ClaudeBackoffSeconds = 300
+$script:CodexLastLimits = $null
 
 function Convert-TokenCount {
     param([double]$Value)
@@ -204,6 +205,10 @@ function Get-CodexUsage {
                 }
                 if ($eventTime -lt $scanStart) { continue }
 
+                if ($obj.payload.rate_limits) {
+                    $latestLimits = $obj.payload.rate_limits
+                }
+
                 if ($obj.type -eq "event_msg" -and $obj.payload.type -eq "token_count") {
                     $usage = $obj.payload.info.last_token_usage
                     if (-not $usage) { $usage = $obj.payload.info.total_token_usage }
@@ -213,12 +218,17 @@ function Get-CodexUsage {
                     }
                     $events += [pscustomobject]@{ Time = $eventTime; Tokens = $tokens }
 
-                    if ($obj.payload.rate_limits) { $latestLimits = $obj.payload.rate_limits }
                     if ($obj.payload.info.model_context_window) { $latestContextWindow = [int](Get-Number $obj.payload.info.model_context_window) }
                     $latestEventTime = $eventTime
                 }
             }
         }
+    }
+
+    if ($latestLimits) {
+        $script:CodexLastLimits = $latestLimits
+    } elseif ($script:CodexLastLimits) {
+        $latestLimits = $script:CodexLastLimits
     }
 
     $primary = New-LimitInfo $latestLimits.primary
@@ -503,10 +513,14 @@ function Get-ClaudeOfficialUsage {
 
 function Get-ClaudeOfficialUsageCached {
     if ($script:ClaudeForceRefresh -or $null -eq $script:ClaudeOfficialCache -or (Get-Date) -ge $script:ClaudeNextFetch) {
-        $script:ClaudeOfficialCache = Get-ClaudeOfficialUsage -ForceRefresh:$script:ClaudeForceRefresh
-        if ($script:ClaudeOfficialCache.Status -eq "ok") {
+        $fresh = Get-ClaudeOfficialUsage -ForceRefresh:$script:ClaudeForceRefresh
+        if ($fresh.Status -eq "ok") {
+            $script:ClaudeOfficialCache = $fresh
             $script:ClaudeNextFetch = (Get-Date).AddSeconds(60)
+        } elseif ($script:ClaudeOfficialCache -and $script:ClaudeOfficialCache.Status -eq "ok") {
+            $script:ClaudeNextFetch = (Get-Date).AddSeconds($script:ClaudeBackoffSeconds)
         } else {
+            $script:ClaudeOfficialCache = $fresh
             $script:ClaudeNextFetch = (Get-Date).AddSeconds($script:ClaudeBackoffSeconds)
         }
     }
@@ -817,7 +831,6 @@ $loginButton.Add_Click({
     Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" -Wait | Out-Null
     $script:ClaudeForceRefresh = $false
     $script:ClaudeNextFetch = [DateTime]::MinValue
-    $script:ClaudeOfficialCache = $null
     Update-Widget
 })
 
