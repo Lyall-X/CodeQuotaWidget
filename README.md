@@ -2,6 +2,8 @@
 
 Windows desktop widget for Codex and Claude Code usage.
 
+![CodeQuotaWidget screenshot](assets/screenshot.png)
+
 ## Features
 
 - Compact desktop overlay for Codex and Claude Code limits.
@@ -15,7 +17,6 @@ Windows desktop widget for Codex and Claude Code usage.
 ## Run
 
 ```powershell
-cd .\outputs\CodexClaudeUsageWidget
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Run-UsageWidget.ps1
 ```
 

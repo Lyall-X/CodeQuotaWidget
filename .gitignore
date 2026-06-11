@@ -5,6 +5,5 @@
 .env
 .env.*
 config.json
-outputs/CodexClaudeUsageWidget/config.json
 credentials.json
 *.credentials.json
