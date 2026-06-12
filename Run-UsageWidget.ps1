@@ -678,13 +678,14 @@ function New-UsageCell {
 
     $labelText = Format-UsageLabel (if ($DisplayText) { $DisplayText } else { Format-UsageRatio $Tokens $Percent })
     $percentText = Format-UsagePercent $Percent
+    $resetColumnWidth = 86
 
     $header = New-Object System.Windows.Controls.DockPanel
     $header.LastChildFill = $true
     $header.Margin = "0,0,0,2"
 
     $resetSpacer = New-Object System.Windows.Controls.Border
-    $resetSpacer.Width = 62
+    $resetSpacer.Width = $resetColumnWidth
     [System.Windows.Controls.DockPanel]::SetDock($resetSpacer, "Right")
     $header.Children.Add($resetSpacer) | Out-Null
 
@@ -704,7 +705,7 @@ function New-UsageCell {
     $panel.LastChildFill = $true
 
     $reset = New-TextBlock $ResetText 11 "#91A5BE"
-    $reset.MinWidth = 62
+    $reset.Width = $resetColumnWidth
     $reset.TextAlignment = "Right"
     [System.Windows.Controls.DockPanel]::SetDock($reset, "Right")
     $panel.Children.Add($reset) | Out-Null
