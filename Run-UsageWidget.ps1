@@ -683,8 +683,14 @@ function New-UsageCell {
     $header.LastChildFill = $true
     $header.Margin = "0,0,0,2"
 
+    $resetSpacer = New-Object System.Windows.Controls.Border
+    $resetSpacer.Width = 62
+    [System.Windows.Controls.DockPanel]::SetDock($resetSpacer, "Right")
+    $header.Children.Add($resetSpacer) | Out-Null
+
     $percent = New-TextBlock $percentText 11 "#91A5BE"
     $percent.MinWidth = 42
+    $percent.Margin = "0,0,8,0"
     $percent.TextAlignment = "Right"
     [System.Windows.Controls.DockPanel]::SetDock($percent, "Right")
     $header.Children.Add($percent) | Out-Null
