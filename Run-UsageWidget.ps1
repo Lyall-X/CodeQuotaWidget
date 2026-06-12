@@ -115,6 +115,34 @@ function Convert-AnyResetTime {
     }
 }
 
+function Convert-GeminiResetTextToDate {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+    $clean = $Text.Trim()
+    $culture = [System.Globalization.CultureInfo]::InvariantCulture
+    $now = Get-Date
+
+    try {
+        if ($clean -match '^(?i)at\s+(.+)$') {
+            $time = [DateTime]::Parse($Matches[1], $culture)
+            $date = $now.Date.AddHours($time.Hour).AddMinutes($time.Minute)
+            if ($date -lt $now.AddMinutes(-2)) { $date = $date.AddDays(1) }
+            return $date
+        }
+
+        if ($clean -match '^(?<month>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(?<day>\d{1,2})\s+at\s+(?<time>\d{1,2}:\d{2}\s+[AP]M)$') {
+            $dateText = "{0} {1} {2} {3}" -f $Matches.month, $Matches.day, $now.Year, $Matches.time
+            $date = [DateTime]::ParseExact($dateText, "MMM d yyyy h:mm tt", $culture)
+            if ($date -lt $now.Date.AddDays(-30)) { $date = $date.AddYears(1) }
+            return $date
+        }
+
+        return [DateTime]::Parse($clean, $culture)
+    } catch {
+        return $null
+    }
+}
+
 function Read-WidgetConfig {
     $defaults = [ordered]@{
         left = $null
@@ -547,6 +575,8 @@ function Invoke-GeminiBrowserUsage {
             return [pscustomobject]@{ Status = "error"; Error = "empty response" }
         }
         $json = ($output | Select-Object -Last 1) | ConvertFrom-Json
+        $currentResetAt = Convert-GeminiResetTextToDate $json.currentResetText
+        $weeklyResetAt = Convert-GeminiResetTextToDate $json.weeklyResetText
         return [pscustomobject]@{
             Status = $json.status
             CurrentPercent = $json.currentPercent
@@ -554,6 +584,10 @@ function Invoke-GeminiBrowserUsage {
             CurrentLabel = $json.currentLabel
             WeeklyLabel = $json.weeklyLabel
             ResetText = $json.resetText
+            CurrentResetText = $json.currentResetText
+            WeeklyResetText = $json.weeklyResetText
+            CurrentResetAt = $currentResetAt
+            WeeklyResetAt = $weeklyResetAt
             Error = $json.error
             Url = $json.url
             Title = $json.title
@@ -863,10 +897,11 @@ function Update-Widget {
     }
 
     if ($gemini.Status -eq "ok") {
-        $geminiReset = if ($gemini.ResetText) { [string]$gemini.ResetText } else { "browser" }
+        $geminiReset = if ($gemini.CurrentResetAt) { Convert-ResetDelta $gemini.CurrentResetAt } elseif ($gemini.CurrentResetText) { [string]$gemini.CurrentResetText } else { "browser" }
         $geminiNow = New-UsageCell 0 $gemini.CurrentPercent $geminiReset $gemini.CurrentLabel
         if ($null -ne $gemini.WeeklyPercent) {
-            $geminiWeek = New-UsageCell 0 $gemini.WeeklyPercent "weekly" $gemini.WeeklyLabel
+            $geminiWeekReset = if ($gemini.WeeklyResetAt) { Convert-ResetClock $gemini.WeeklyResetAt } elseif ($gemini.WeeklyResetText) { [string]$gemini.WeeklyResetText } else { "weekly" }
+            $geminiWeek = New-UsageCell 0 $gemini.WeeklyPercent $geminiWeekReset $gemini.WeeklyLabel
         } else {
             $geminiWeek = New-PlainCell "Gemini App" "usage page"
         }

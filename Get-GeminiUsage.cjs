@@ -195,6 +195,10 @@ function parseUsage(text) {
   const resetMatch =
     joined.match(/(?:reset|refresh)(?:s|es)?(?:\s+in)?\s+([^|,;]{2,40})/i) ||
     joined.match(/(?:重置|刷新)[^|,;，。]{0,10}([0-9]+\s*(?:h|hr|hrs|hour|hours|m|min|分钟|小时)[^|,;，。]{0,30})/i);
+  const resetLines = lines
+    .map((line) => line.match(/(?:reset|refresh)(?:s|es)?(?:\s+in)?\s+([^|,;]{2,60})/i))
+    .filter(Boolean)
+    .map((match) => match[1].trim());
 
   return {
     status: allPercents.length ? "ok" : "unparsed",
@@ -202,7 +206,9 @@ function parseUsage(text) {
     weeklyPercent: allPercents[1] ?? null,
     currentLabel: ratios[0] ? `${ratios[0].label} (${Math.round(ratios[0].percent)}%)` : "",
     weeklyLabel: ratios[1] ? `${ratios[1].label} (${Math.round(ratios[1].percent)}%)` : "",
-    resetText: resetMatch ? resetMatch[1].trim() : "",
+    resetText: resetLines[0] || (resetMatch ? resetMatch[1].trim() : ""),
+    currentResetText: resetLines[0] || "",
+    weeklyResetText: resetLines[1] || "",
     lines,
   };
 }
@@ -251,6 +257,8 @@ async function readUsage() {
       currentLabel: parsed.currentLabel,
       weeklyLabel: parsed.weeklyLabel,
       resetText: parsed.resetText,
+      currentResetText: parsed.currentResetText,
+      weeklyResetText: parsed.weeklyResetText,
       title: value.title || "",
       url: value.url || "",
       clickedSettings: value.clickedSettings || "",
