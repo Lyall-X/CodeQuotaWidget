@@ -51,30 +51,6 @@ $script:GeminiUsageScript = Join-Path $script:AppDir "Get-GeminiUsage.cjs"
 $script:GeminiUsageCache = $null
 $script:GeminiNextFetch = [DateTime]::MinValue
 $script:GeminiBackoffSeconds = 180
-$script:UsageProgressBarStyle = [Windows.Markup.XamlReader]::Parse(@'
-<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-       TargetType="{x:Type ProgressBar}">
-  <Setter Property="Template">
-    <Setter.Value>
-      <ControlTemplate TargetType="{x:Type ProgressBar}">
-        <Grid SnapsToDevicePixels="True">
-          <Border Background="{TemplateBinding Background}"
-                  BorderBrush="#6B7A8C"
-                  BorderThickness="1" />
-          <Grid Margin="1" ClipToBounds="True">
-            <Rectangle x:Name="PART_Track" Fill="Transparent" />
-            <Decorator x:Name="PART_Indicator"
-                       HorizontalAlignment="Left">
-              <Border Background="{TemplateBinding Foreground}" />
-            </Decorator>
-          </Grid>
-        </Grid>
-      </ControlTemplate>
-    </Setter.Value>
-  </Setter>
-</Style>
-'@)
 
 function Convert-TokenCount {
     param([double]$Value)
@@ -712,6 +688,8 @@ function New-UsageCell {
     $labelText = Format-UsageLabel (if ($DisplayText) { $DisplayText } else { Format-UsageRatio $Tokens $Percent })
     $percentText = Format-UsagePercent $Percent
     $resetColumnWidth = 86
+    $barWidth = 176
+    $barValue = if ($null -eq $Percent) { 0 } else { [Math]::Max(0, [Math]::Min(100, [double]$Percent)) }
 
     $header = New-Object System.Windows.Controls.DockPanel
     $header.LastChildFill = $true
@@ -743,16 +721,26 @@ function New-UsageCell {
     [System.Windows.Controls.DockPanel]::SetDock($reset, "Right")
     $panel.Children.Add($reset) | Out-Null
 
-    $bar = New-Object System.Windows.Controls.ProgressBar
-    $bar.Height = 7
-    $bar.Minimum = 0
-    $bar.Maximum = 100
-    $bar.Margin = "0,7,8,0"
-    $bar.Foreground = "#4B7DE8"
-    $bar.Background = "#314052"
-    if ($script:UsageProgressBarStyle) { $bar.Style = $script:UsageProgressBarStyle }
-    $bar.Value = if ($null -eq $Percent) { 0 } else { [Math]::Max(0, [Math]::Min(100, [double]$Percent)) }
-    $panel.Children.Add($bar) | Out-Null
+    $barTrack = New-Object System.Windows.Controls.Grid
+    $barTrack.Width = $barWidth
+    $barTrack.Height = 7
+    $barTrack.Margin = "0,7,8,0"
+    $barTrack.HorizontalAlignment = "Left"
+
+    $barBack = New-Object System.Windows.Controls.Border
+    $barBack.Background = "#314052"
+    $barBack.BorderBrush = "#6B7A8C"
+    $barBack.BorderThickness = 1
+    $barTrack.Children.Add($barBack) | Out-Null
+
+    $barFill = New-Object System.Windows.Controls.Border
+    $barFill.Background = "#4B7DE8"
+    $barFill.HorizontalAlignment = "Left"
+    $barFill.Margin = "1"
+    $barFill.Width = [Math]::Max(0, ($barWidth - 2) * $barValue / 100.0)
+    $barTrack.Children.Add($barFill) | Out-Null
+
+    $panel.Children.Add($barTrack) | Out-Null
 
     $outer.Children.Add($panel) | Out-Null
     return $outer
