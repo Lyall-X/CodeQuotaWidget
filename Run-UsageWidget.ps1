@@ -1,5 +1,5 @@
 param(
-    [int]$RefreshSeconds = 3,
+    [int]$RefreshSeconds = 10,
     [switch]$Once,
     [switch]$Topmost
 )
@@ -676,11 +676,23 @@ function New-UsageCell {
     $outer.Orientation = "Vertical"
     $outer.Margin = "0,0,18,6"
 
-    $labelText = if ($DisplayText) { $DisplayText } else { Format-UsageRatio $Tokens $Percent }
+    $labelText = Format-UsageLabel (if ($DisplayText) { $DisplayText } else { Format-UsageRatio $Tokens $Percent })
+    $percentText = Format-UsagePercent $Percent
+
+    $header = New-Object System.Windows.Controls.DockPanel
+    $header.LastChildFill = $true
+    $header.Margin = "0,0,0,2"
+
+    $percent = New-TextBlock $percentText 11 "#91A5BE"
+    $percent.MinWidth = 42
+    $percent.TextAlignment = "Right"
+    [System.Windows.Controls.DockPanel]::SetDock($percent, "Right")
+    $header.Children.Add($percent) | Out-Null
 
     $label = New-TextBlock $labelText 11 "#A9BCD2"
-    $label.Margin = "0,0,0,2"
-    $outer.Children.Add($label) | Out-Null
+    $label.Margin = "0,0,8,0"
+    $header.Children.Add($label) | Out-Null
+    $outer.Children.Add($header) | Out-Null
 
     $panel = New-Object System.Windows.Controls.DockPanel
     $panel.LastChildFill = $true
@@ -849,22 +861,34 @@ function Format-LimitPercent {
     return ("{0:N1}%" -f [double]$Value)
 }
 
+function Format-UsagePercent {
+    param($Value)
+    if ($null -eq $Value) { return "n/a" }
+    $percentNumber = [double]$Value
+    if ([Math]::Abs($percentNumber - [Math]::Round($percentNumber)) -lt 0.05) {
+        return "{0:N0}%" -f $percentNumber
+    }
+    return "{0:N1}%" -f $percentNumber
+}
+
+function Format-UsageLabel {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return "n/a" }
+    $openFull = [string][char]0xFF08
+    $closeFull = [string][char]0xFF09
+    $pattern = "\s*[\($openFull]\s*\d+(?:\.\d+)?%\s*[\)$closeFull]\s*$"
+    return ($Text -replace $pattern, "").Trim()
+}
+
 function Format-UsageRatio {
     param([double]$Tokens, $Percent)
     if ($null -eq $Percent) { return "n/a" }
-    $openParen = [string][char]0xFF08
-    $closeParen = [string][char]0xFF09
     $percentNumber = [double]$Percent
-    $percentText = if ([Math]::Abs($percentNumber - [Math]::Round($percentNumber)) -lt 0.05) {
-        "{0:N0}%" -f $percentNumber
-    } else {
-        "{0:N1}%" -f $percentNumber
-    }
     if ($Tokens -gt 0 -and $percentNumber -gt 0) {
         $total = $Tokens * 100.0 / $percentNumber
-        return ("{0}/{1} {2}{3}{4}" -f (Convert-TokenCount $Tokens), (Convert-TokenCount $total), $openParen, $percentText, $closeParen)
+        return ("{0}/{1}" -f (Convert-TokenCount $Tokens), (Convert-TokenCount $total))
     }
-    return ("{0:N0}/100 {1}{2}{3}" -f $percentNumber, $openParen, $percentText, $closeParen)
+    return ("{0:N0}/100" -f $percentNumber)
 }
 
 function Format-NullableValue {
@@ -935,17 +959,19 @@ $loginButton.Add_Click({
     $updated.Text = "login"
     $loginCommand = "claude auth login; Write-Host ''; Write-Host 'Login finished. Press Enter to close this window.'; Read-Host"
     $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($loginCommand))
-    Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" -Wait | Out-Null
+    Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" | Out-Null
     $script:ClaudeForceRefresh = $false
     $script:ClaudeNextFetch = [DateTime]::MinValue
-    Update-Widget
 })
 
 $geminiButton.Add_Click({
     $updated.Text = "gemini"
-    Invoke-GeminiBrowserUsage "login" | Out-Null
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) { $node = Get-Command node -ErrorAction SilentlyContinue }
+    if ($node) {
+        Start-Process -WindowStyle Hidden -FilePath $node.Source -ArgumentList @("`"$script:GeminiUsageScript`"", "login") | Out-Null
+    }
     $script:GeminiNextFetch = [DateTime]::MinValue
-    Update-Widget
 })
 
 $opacitySlider.Add_ValueChanged({
