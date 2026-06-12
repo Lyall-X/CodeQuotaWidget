@@ -7,3 +7,4 @@
 config.json
 credentials.json
 *.credentials.json
+gemini-browser-profile/

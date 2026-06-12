@@ -47,6 +47,10 @@ $script:ClaudeOfficialCache = $null
 $script:ClaudeNextFetch = [DateTime]::MinValue
 $script:ClaudeBackoffSeconds = 300
 $script:CodexLastLimits = $null
+$script:GeminiUsageScript = Join-Path $script:AppDir "Get-GeminiUsage.cjs"
+$script:GeminiUsageCache = $null
+$script:GeminiNextFetch = [DateTime]::MinValue
+$script:GeminiBackoffSeconds = 180
 
 function Convert-TokenCount {
     param([double]$Value)
@@ -527,6 +531,54 @@ function Get-ClaudeOfficialUsageCached {
     return $script:ClaudeOfficialCache
 }
 
+function Invoke-GeminiBrowserUsage {
+    param([string]$Command = "read")
+    if (-not (Test-Path $script:GeminiUsageScript)) {
+        return [pscustomobject]@{ Status = "error"; Error = "missing helper" }
+    }
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) { $node = Get-Command node -ErrorAction SilentlyContinue }
+    if (-not $node) {
+        return [pscustomobject]@{ Status = "error"; Error = "missing node" }
+    }
+    try {
+        $output = & $node.Source $script:GeminiUsageScript $Command 2>$null
+        if (-not $output) {
+            return [pscustomobject]@{ Status = "error"; Error = "empty response" }
+        }
+        $json = ($output | Select-Object -Last 1) | ConvertFrom-Json
+        return [pscustomobject]@{
+            Status = $json.status
+            CurrentPercent = $json.currentPercent
+            WeeklyPercent = $json.weeklyPercent
+            CurrentLabel = $json.currentLabel
+            WeeklyLabel = $json.weeklyLabel
+            ResetText = $json.resetText
+            Error = $json.error
+            Url = $json.url
+            Title = $json.title
+        }
+    } catch {
+        return [pscustomobject]@{ Status = "error"; Error = $_.Exception.Message }
+    }
+}
+
+function Get-GeminiBrowserUsageCached {
+    if ($null -eq $script:GeminiUsageCache -or (Get-Date) -ge $script:GeminiNextFetch) {
+        $fresh = Invoke-GeminiBrowserUsage "read"
+        if ($fresh.Status -eq "ok") {
+            $script:GeminiUsageCache = $fresh
+            $script:GeminiNextFetch = (Get-Date).AddSeconds(60)
+        } elseif ($script:GeminiUsageCache -and $script:GeminiUsageCache.Status -eq "ok") {
+            $script:GeminiNextFetch = (Get-Date).AddSeconds($script:GeminiBackoffSeconds)
+        } else {
+            $script:GeminiUsageCache = $fresh
+            $script:GeminiNextFetch = (Get-Date).AddSeconds($script:GeminiBackoffSeconds)
+        }
+    }
+    return $script:GeminiUsageCache
+}
+
 function New-TextBlock {
     param(
         [string]$Text,
@@ -735,6 +787,8 @@ $opacityValue.Margin = "10,0,0,0"
 $settingsPanel.Children.Add($opacityValue) | Out-Null
 $loginButton = New-ActionButton "Login" "Run claude auth login, then refresh Claude usage"
 $settingsPanel.Children.Add($loginButton) | Out-Null
+$geminiButton = New-ActionButton "Gemini" "Open Gemini in a browser profile for login and usage scraping"
+$settingsPanel.Children.Add($geminiButton) | Out-Null
 $stack.Children.Add($settingsPanel) | Out-Null
 
 $usageGrid = New-Object System.Windows.Controls.Grid
@@ -792,6 +846,7 @@ function Update-Widget {
 
     $codex = Get-CodexUsage
     $claude = Get-ClaudeOfficialUsageCached
+    $gemini = Get-GeminiBrowserUsageCached
 
     $codexNow = New-UsageCell $codex.CurrentTokens $codex.Primary.UsedPercent $codex.Primary.ResetIn
     $codexWeek = New-UsageCell $codex.WeekTokens $codex.Secondary.UsedPercent $codex.Secondary.ResetClock
@@ -805,6 +860,23 @@ function Update-Widget {
         $claudeNow = New-PlainCell "Claude official" $claude.Error
         $claudeWeek = New-PlainCell "Manual" "open settings"
         Add-UsageRow $usageGrid "Claude" $claudeNow $claudeWeek
+    }
+
+    if ($gemini.Status -eq "ok") {
+        $geminiReset = if ($gemini.ResetText) { [string]$gemini.ResetText } else { "browser" }
+        $geminiNow = New-UsageCell 0 $gemini.CurrentPercent $geminiReset $gemini.CurrentLabel
+        if ($null -ne $gemini.WeeklyPercent) {
+            $geminiWeek = New-UsageCell 0 $gemini.WeeklyPercent "weekly" $gemini.WeeklyLabel
+        } else {
+            $geminiWeek = New-PlainCell "Gemini App" "usage page"
+        }
+        Add-UsageRow $usageGrid "Gemini" $geminiNow $geminiWeek
+    } else {
+        $geminiError = if ($gemini.Error) { [string]$gemini.Error } else { "open usage" }
+        if ($gemini.Status -eq "unparsed") { $geminiError = "open usage" }
+        $geminiNow = New-PlainCell "Gemini browser" $geminiError
+        $geminiWeek = New-PlainCell "Experimental" "settings login"
+        Add-UsageRow $usageGrid "Gemini" $geminiNow $geminiWeek
     }
 
     $updated.Text = (Get-Date).ToString("HH:mm")
@@ -831,6 +903,13 @@ $loginButton.Add_Click({
     Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" -Wait | Out-Null
     $script:ClaudeForceRefresh = $false
     $script:ClaudeNextFetch = [DateTime]::MinValue
+    Update-Widget
+})
+
+$geminiButton.Add_Click({
+    $updated.Text = "gemini"
+    Invoke-GeminiBrowserUsage "login" | Out-Null
+    $script:GeminiNextFetch = [DateTime]::MinValue
     Update-Widget
 })
 
