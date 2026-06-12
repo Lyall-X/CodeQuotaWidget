@@ -1,5 +1,5 @@
 param(
-    [int]$RefreshSeconds = 10,
+    [int]$RefreshSeconds = 30,
     [switch]$Once,
     [switch]$Topmost
 )
@@ -193,6 +193,15 @@ function Save-WidgetConfig {
         opacity = [Math]::Round($Opacity, 2)
         locked = $Locked
     } | ConvertTo-Json | Set-Content -Path $script:ConfigPath -Encoding UTF8
+}
+
+function Request-WidgetConfigSave {
+    if ($script:ConfigSaveTimer) {
+        $script:ConfigSaveTimer.Stop()
+        $script:ConfigSaveTimer.Start()
+    } else {
+        Save-WidgetConfig $window $window.Opacity $script:IsLocked
+    }
 }
 
 function Get-JsonLines {
@@ -879,6 +888,13 @@ $stack.Children.Add($usageGrid) | Out-Null
 $border.Child = $stack
 $window.Content = $border
 
+$script:ConfigSaveTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:ConfigSaveTimer.Interval = [TimeSpan]::FromMilliseconds(450)
+$script:ConfigSaveTimer.Add_Tick({
+    $script:ConfigSaveTimer.Stop()
+    Save-WidgetConfig $window $window.Opacity $script:IsLocked
+})
+
 function Set-LockState {
     param([bool]$Locked)
     $script:IsLocked = $Locked
@@ -976,6 +992,7 @@ function Update-Widget {
 $border.Add_MouseLeftButtonDown({
     if (-not $script:IsLocked) {
         try { $window.DragMove() } catch {}
+        Save-WidgetConfig $window $window.Opacity $script:IsLocked
     }
 })
 
@@ -1009,11 +1026,11 @@ $geminiButton.Add_Click({
 $opacitySlider.Add_ValueChanged({
     $window.Opacity = [Math]::Max(0.35, [Math]::Min(1.0, $opacitySlider.Value / 100.0))
     $opacityValue.Text = "{0:N0}%" -f $opacitySlider.Value
-    Save-WidgetConfig $window $window.Opacity $script:IsLocked
+    Request-WidgetConfigSave
 })
 
 $window.Add_LocationChanged({
-    Save-WidgetConfig $window $window.Opacity $script:IsLocked
+    if (-not $script:IsLocked) { Request-WidgetConfigSave }
 })
 
 $window.Add_SourceInitialized({
