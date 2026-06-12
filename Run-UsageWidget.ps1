@@ -51,6 +51,30 @@ $script:GeminiUsageScript = Join-Path $script:AppDir "Get-GeminiUsage.cjs"
 $script:GeminiUsageCache = $null
 $script:GeminiNextFetch = [DateTime]::MinValue
 $script:GeminiBackoffSeconds = 180
+$script:UsageProgressBarStyle = [Windows.Markup.XamlReader]::Parse(@'
+<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       TargetType="{x:Type ProgressBar}">
+  <Setter Property="Template">
+    <Setter.Value>
+      <ControlTemplate TargetType="{x:Type ProgressBar}">
+        <Grid SnapsToDevicePixels="True">
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="#6B7A8C"
+                  BorderThickness="1" />
+          <Grid Margin="1" ClipToBounds="True">
+            <Rectangle x:Name="PART_Track" Fill="Transparent" />
+            <Decorator x:Name="PART_Indicator"
+                       HorizontalAlignment="Left">
+              <Border Background="{TemplateBinding Foreground}" />
+            </Decorator>
+          </Grid>
+        </Grid>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>
+'@)
 
 function Convert-TokenCount {
     param([double]$Value)
@@ -717,6 +741,7 @@ function New-UsageCell {
     $bar.Margin = "0,7,8,0"
     $bar.Foreground = "#4B7DE8"
     $bar.Background = "#314052"
+    if ($script:UsageProgressBarStyle) { $bar.Style = $script:UsageProgressBarStyle }
     $bar.Value = if ($null -eq $Percent) { 0 } else { [Math]::Max(0, [Math]::Min(100, [double]$Percent)) }
     $panel.Children.Add($bar) | Out-Null
 
