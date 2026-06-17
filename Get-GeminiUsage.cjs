@@ -16,22 +16,31 @@ function findBrowser() {
   return candidates.find((file) => fs.existsSync(file));
 }
 
-function startBrowser() {
+function startBrowser(mode = "headless") {
   const browser = findBrowser();
   if (!browser) throw new Error("Chrome or Edge was not found");
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
-  const child = childProcess.spawn(browser, [
+  const args = [
     `--remote-debugging-port=${PORT}`,
     `--user-data-dir=${PROFILE_DIR}`,
     "--no-first-run",
-    "--new-window",
-    GEMINI_URL,
-  ], {
+  ];
+  if (mode === "visible") {
+    args.push("--new-window", GEMINI_URL);
+  } else {
+    args.push(
+      "--headless=new",
+      "--disable-gpu",
+      "--window-size=1200,900",
+      "about:blank"
+    );
+  }
+  const child = childProcess.spawn(browser, args, {
     detached: true,
     stdio: "ignore",
   });
   child.unref();
-  return { browser, port: PORT, profile: PROFILE_DIR };
+  return { browser, port: PORT, profile: PROFILE_DIR, mode };
 }
 
 async function sleep(ms) {
@@ -49,7 +58,7 @@ async function ensureBrowser() {
     await cdpJson("/json/version");
     return;
   } catch {
-    startBrowser();
+    startBrowser("headless");
   }
   for (let i = 0; i < 30; i++) {
     try {
@@ -274,7 +283,7 @@ async function readUsage() {
   try {
     const command = process.argv[2] || "read";
     if (command === "login") {
-      console.log(JSON.stringify({ status: "login", url: GEMINI_URL, ...startBrowser() }));
+      console.log(JSON.stringify({ status: "login", url: GEMINI_URL, ...startBrowser("visible") }));
       return;
     }
     console.log(JSON.stringify(await readUsage()));
